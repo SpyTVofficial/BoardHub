@@ -6,6 +6,15 @@ resource "random_id" "suffix" {
 }
 
 # -------------------------
+# Get Ubuntu 22.04 image data
+# -------------------------
+data "hcloud_image" "ubuntu" {
+  name = "ubuntu-22.04"
+  most_recent = true
+  with_selector = "architecture==x86"
+}
+
+# -------------------------
 # Generate SSH key
 # -------------------------
 resource "tls_private_key" "default" {
@@ -26,7 +35,7 @@ resource "hcloud_ssh_key" "default" {
 # -------------------------
 resource "hcloud_server" "k8s_master" {
   name        = "${var.cluster_name}-master"
-  image       = "ubuntu-22.04"
+  image       = data.hcloud_image.ubuntu.id
   server_type = "cpx11"
   location    = "nbg1"
   ssh_keys    = [hcloud_ssh_key.default.id]
@@ -38,7 +47,7 @@ resource "hcloud_server" "k8s_master" {
 resource "hcloud_server" "k8s_worker" {
   count       = var.worker_count # Add count for multiple workers
   name        = "${var.cluster_name}-worker-${count.index + 1}"
-  image       = "ubuntu-22.04"
+  image       = data.hcloud_image.ubuntu.id
   server_type = "cpx11"
   location    = "nbg1"
   ssh_keys    = [hcloud_ssh_key.default.id]
