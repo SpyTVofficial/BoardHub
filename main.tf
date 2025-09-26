@@ -96,7 +96,7 @@ resource "null_resource" "run_ansible" {
 # Outputs
 # -------------------------
 output "master_ip" {
-  value = hcloud_server.manager1.network.ip
+  value = hcloud_server.manager.network.ip
 }
 
 output "worker_ips" {
