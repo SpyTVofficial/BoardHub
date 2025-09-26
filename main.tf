@@ -1,6 +1,6 @@
 resource "hcloud_ssh_key" "default" {
   name       = "github-actions-key"
-  public_key = file("~/.ssh/id_rsa.pub")
+  public_key = file("${path.module}/id_rsa.pub")
 }
 
 resource "hcloud_server" "k8s_master" {
