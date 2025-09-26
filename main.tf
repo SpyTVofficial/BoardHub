@@ -1,48 +1,61 @@
+# -------------------------
+# Random suffix for SSH key
+# -------------------------
+resource "random_id" "suffix" {
+  byte_length = 3
+}
+
+# -------------------------
 # Generate SSH key
+# -------------------------
 resource "tls_private_key" "default" {
   algorithm = "RSA"
   rsa_bits  = 4096
 }
 
+# -------------------------
 # Add SSH key to Hetzner
+# -------------------------
 resource "hcloud_ssh_key" "default" {
   name       = "terraform-key-${random_id.suffix.hex}"
   public_key = tls_private_key.default.public_key_openssh
 }
 
-resource "random_id" "suffix" {
-  byte_length = 3
-}
-
+# -------------------------
 # Master node
+# -------------------------
 resource "hcloud_server" "k8s_master" {
   name        = "${var.cluster_name}-master"
-  image       = "ubuntu-22.04"
-  image_type  = "system"      # <- ensures official OS image
+  image       = "117885"      # Replace with Ubuntu 22.04 official image ID
   server_type = "cpx11"
   location    = "nbg1"
   ssh_keys    = [hcloud_ssh_key.default.id]
 }
 
+# -------------------------
 # Worker nodes
+# -------------------------
 resource "hcloud_server" "k8s_worker" {
   count       = 2
-  name        = "${var.cluster_name}-worker-${count.index}"
-  image       = "ubuntu-22.04"
-  image_type  = "system"      # <- ensures official OS image
+  name        = "${var.cluster_name}-worker-${count.index + 1}"
+  image       = "117885"      # Same Ubuntu 22.04 ID as master
   server_type = "cpx11"
   location    = "nbg1"
   ssh_keys    = [hcloud_ssh_key.default.id]
 }
 
+# -------------------------
 # Write private key to file
+# -------------------------
 resource "local_file" "private_key_file" {
   filename        = "${path.module}/private_key.pem"
   content         = tls_private_key.default.private_key_pem
   file_permission = "0600"
 }
 
+# -------------------------
 # Generate Ansible inventory
+# -------------------------
 resource "local_file" "ansible_inventory" {
   filename = "${path.module}/inventory.ini"
   content  = <<EOT
@@ -61,7 +74,9 @@ ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 EOT
 }
 
+# -------------------------
 # Run Ansible playbooks automatically
+# -------------------------
 resource "null_resource" "run_ansible" {
   depends_on = [
     hcloud_server.k8s_master,
@@ -78,7 +93,9 @@ resource "null_resource" "run_ansible" {
   }
 }
 
+# -------------------------
 # Outputs
+# -------------------------
 output "master_ip" {
   value = hcloud_server.k8s_master.ipv4_address
 }
