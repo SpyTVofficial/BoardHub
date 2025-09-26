@@ -81,7 +81,7 @@ resource "local_file" "ansible_inventory" {
 
   content = <<-EOF
 [managers]
-manager1 ansible_host=${try(element([for n in hcloud_server.k8s_master.network : n.ip], 0), "")} ansible_user=root ansible_ssh_private_key_file=./private_key.pem
+manager1 ansible_host=${try(element([for n in hcloud_server.k8s_master.network : n.ip], 0), "") } ansible_user=root ansible_ssh_private_key_file=~/.ssh/id_ed25519
 
 [workers]
 %{ for i, w in hcloud_server.k8s_worker }
