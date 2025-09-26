@@ -1,0 +1,20 @@
+env:
+  HETZNER_TOKEN: ${{ secrets.HETZNER_TOKEN }}
+
+steps:
+  - name: Checkout code
+    uses: actions/checkout@v3
+
+  - name: Setup Terraform
+    uses: hashicorp/setup-terraform@v2
+    with:
+      terraform_version: 1.7.7
+
+  - name: Terraform Init
+    run: terraform init
+
+  - name: Terraform Plan
+    run: terraform plan -var="hcloud_token=${{ secrets.tcMnL5iLnqlDWjCWvAKc374zI60QpFCBS31FacM4XStw7HjFlcveikWrWUc6YUA2}}" -out=tfplan
+
+  - name: Terraform Apply
+    run: terraform apply -input=false -auto-approve tfplan
