@@ -28,3 +28,7 @@ jobs:
 
       - name: Terraform Apply
         run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Terraform Destroy on failure
+        if: failure()   # runs only if any previous step fails
+        run: terraform destroy -auto-approve -var="hcloud_token=${{ secrets.HETZNER_TOKEN }}"
