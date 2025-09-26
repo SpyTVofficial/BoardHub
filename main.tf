@@ -1,16 +1,49 @@
-# Generate an SSH key with Terraform
+terraform {
+  required_providers {
+    hcloud = {
+      source  = "hetznercloud/hcloud"
+      version = "~> 1.37.0"
+    }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
+    local = {
+      source  = "hashicorp/local"
+      version = "~> 2.3"
+    }
+  }
+}
+
+provider "hcloud" {
+  token = var.hcloud_token
+}
+
+variable "hcloud_token" {
+  type        = string
+  description = "Hetzner Cloud API token"
+  sensitive   = true
+}
+
+variable "cluster_name" {
+  type        = string
+  default     = "k3s-cluster"
+  description = "Name prefix for the servers"
+}
+
+# Generate SSH key
 resource "tls_private_key" "default" {
   algorithm = "RSA"
   rsa_bits  = 4096
 }
 
-# Create the SSH key in Hetzner
+# Add SSH key to Hetzner
 resource "hcloud_ssh_key" "default" {
   name       = "terraform-generated-key"
   public_key = tls_private_key.default.public_key_openssh
 }
 
-# Hetzner master node
+# Master node
 resource "hcloud_server" "k8s_master" {
   name        = "${var.cluster_name}-master"
   image       = "ubuntu-22.04"
@@ -19,7 +52,7 @@ resource "hcloud_server" "k8s_master" {
   ssh_keys    = [hcloud_ssh_key.default.id]
 }
 
-# Hetzner worker nodes
+# Worker nodes
 resource "hcloud_server" "k8s_worker" {
   count       = 2
   name        = "${var.cluster_name}-worker-${count.index}"
@@ -29,12 +62,58 @@ resource "hcloud_server" "k8s_worker" {
   ssh_keys    = [hcloud_ssh_key.default.id]
 }
 
+# Write private key to file
+resource "local_file" "private_key_file" {
+  filename        = "${path.module}/private_key.pem"
+  content         = tls_private_key.default.private_key_pem
+  file_permission = "0600"
+}
+
+# Generate Ansible inventory
+resource "local_file" "ansible_inventory" {
+  filename = "${path.module}/inventory.ini"
+  content  = <<EOT
+[managers]
+manager1 ansible_host=${hcloud_server.k8s_master.ipv4_address} ansible_user=root ansible_ssh_private_key_file=./private_key.pem
+
+[workers]
+${join("\n", [
+  for i, w in hcloud_server.k8s_worker :
+  "worker${i+1} ansible_host=${w.ipv4_address} ansible_user=root ansible_ssh_private_key_file=./private_key.pem"
+])}
+
+[all:vars]
+ansible_python_interpreter=/usr/bin/python3
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+EOT
+}
+
+# Run Ansible playbooks automatically
+resource "null_resource" "run_ansible" {
+  depends_on = [
+    hcloud_server.k8s_master,
+    hcloud_server.k8s_worker,
+    local_file.ansible_inventory,
+    local_file.private_key_file
+  ]
+
+  provisioner "local-exec" {
+    command = <<EOT
+      ansible-playbook -i ${local_file.ansible_inventory.filename} playbooks/k3s.yml
+      ansible-playbook -i ${local_file.ansible_inventory.filename} playbooks/deploy_board_hub.yml
+    EOT
+  }
+}
+
 # Outputs
 output "master_ip" {
   value = hcloud_server.k8s_master.ipv4_address
 }
 
-output "private_key_pem" {
-  value     = tls_private_key.default.private_key_pem
-  sensitive = true
+output "worker_ips" {
+  value = [for w in hcloud_server.k8s_worker : w.ipv4_address]
+}
+
+output "private_key_file" {
+  value = local_file.private_key_file.filename
 }

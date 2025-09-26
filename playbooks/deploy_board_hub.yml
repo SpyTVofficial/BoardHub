@@ -1,0 +1,69 @@
+- hosts: all_servers
+  become: yes
+  vars:
+    board_hub_path: /opt/board-hub
+  tasks:
+    - name: Ensure unzip is installed
+      apt:
+        name: unzip
+        state: present
+        update_cache: yes
+
+    - name: Create board-hub directory
+      file:
+        path: "{{ board_hub_path }}"
+        state: directory
+        mode: '0755'
+
+    - name: Upload board-hub.zip
+      copy:
+        src: ./board-hub.zip
+        dest: "{{ board_hub_path }}/board-hub.zip"
+        mode: '0644'
+
+    - name: Extract board-hub.zip
+      unarchive:
+        src: "{{ board_hub_path }}/board-hub.zip"
+        dest: "{{ board_hub_path }}"
+        remote_src: yes
+        extra_opts: [--strip-components=1]
+
+    - name: Remove existing node_modules in frontend
+      file:
+        path: "{{ board_hub_path }}/frontend/node_modules"
+        state: absent
+
+    - name: Remove existing node_modules in backend
+      file:
+        path: "{{ board_hub_path }}/backend/node_modules"
+        state: absent
+
+    - name: Reinstall frontend dependencies
+      npm:
+        path: "{{ board_hub_path }}/frontend"
+        production: yes
+
+    - name: Reinstall backend dependencies
+      npm:
+        path: "{{ board_hub_path }}/backend"
+        production: yes
+
+    - name: Ensure run.sh is executable in frontend
+      file:
+        path: "{{ board_hub_path }}/frontend/run.sh"
+        mode: '0755'
+
+    - name: Ensure run.sh is executable in backend
+      file:
+        path: "{{ board_hub_path }}/backend/run.sh"
+        mode: '0755'
+
+    - name: Run frontend run.sh
+      shell: bash run.sh
+      args:
+        chdir: "{{ board_hub_path }}/frontend"
+
+    - name: Run backend run.sh
+      shell: bash run.sh
+      args:
+        chdir: "{{ board_hub_path }}/backend"
