@@ -75,18 +75,24 @@ resource "null_resource" "run_ansible" {
 # -------------------------
 # Outputs
 # -------------------------
+# Precompute worker lines so we don't do arithmetic inside the heredoc
+locals {
+  worker_lines = [
+    for idx, w in hcloud_server.k8s_worker :
+    "worker${idx + 1} ansible_host=${try(element([for n in w.network : n.ip], 0), \"\")} ansible_user=root ansible_ssh_private_key_file=./private_key.pem"
+  ]
+}
+
 resource "local_file" "ansible_inventory" {
   filename        = "${path.module}/ansible/inventories/inventory.ini"
   file_permission = "0640"
 
   content = <<-EOF
 [managers]
-manager1 ansible_host=${try(element([for n in hcloud_server.k8s_master.network : n.ip], 0), "") } ansible_user=root ansible_ssh_private_key_file=~/.ssh/id_ed25519
+manager1 ansible_host=${try(element([for n in hcloud_server.k8s_master.network : n.ip], 0), "")} ansible_user=root ansible_ssh_private_key_file=./private_key.pem
 
 [workers]
-%{ for i, w in hcloud_server.k8s_worker }
-worker${i + 1} ansible_host=${try(element([for n in w.network : n.ip], 0), "")} ansible_user=root ansible_ssh_private_key_file=./private_key.pem
-%{ endfor }
+${join("\n", local.worker_lines)}
 
 [all:vars]
 ansible_python_interpreter=/usr/bin/python3
