@@ -70,10 +70,10 @@ resource "local_file" "ansible_inventory" {
   file_permission = "0640"
 
   content = <<-EOF
-[managers]
+[k3s_manager]
 manager1 ansible_host=${hcloud_server.k3s_master.ipv4_address} ansible_user=root ansible_ssh_private_key_file=./private_key.pem
 
-[workers]
+[k3s_workers]
 %{~ for i, worker in hcloud_server.k3s_worker ~}
 worker${i + 1} ansible_host=${worker.ipv4_address} ansible_user=root ansible_ssh_private_key_file=./private_key.pem
 %{~ endfor ~}

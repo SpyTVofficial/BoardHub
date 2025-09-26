@@ -23,9 +23,6 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
-      - name: Terraform Destroy on Start
-        run: terraform destroy -auto-approve -var="hcloud_token=${{ secrets.HETZNER_TOKEN }}"
-
       - name: Terraform Plan
         run: terraform plan -var="hcloud_token=${{ secrets.HETZNER_TOKEN }}" -out=tfplan
 
