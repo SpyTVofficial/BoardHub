@@ -1,69 +1,214 @@
-- hosts: all
+- hosts: k3s_master
   become: yes
   vars:
     board_hub_path: /opt/board-hub
+    registry: your-dockerhub-username
+    registry_user: your-dockerhub-username
+    registry_password: your-dockerhub-password
+    backend_image: "{{ registry }}/boardhub-backend:latest"
+    frontend_image: "{{ registry }}/boardhub-frontend:latest"
+
   tasks:
-    - name: Ensure unzip is installed
+
+    # -----------------------------
+    # Install Docker
+    # -----------------------------
+    - name: Update apt cache
       apt:
-        name: unzip
+        update_cache: yes
+
+    - name: Install dependencies
+      apt:
+        name: 
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - gnupg
+        state: present
+
+    - name: Add Docker GPG key
+      command: curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+      args:
+        creates: /usr/share/keyrings/docker-archive-keyring.gpg
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+        state: present
+
+    - name: Install Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
         state: present
         update_cache: yes
 
-    - name: Create board-hub directory
+    - name: Ensure Docker service is started
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    # -----------------------------
+    # Docker login
+    # -----------------------------
+    - name: Log in to Docker registry
+      community.docker.docker_login:
+        username: "{{ registry_user }}"
+        password: "{{ registry_password }}"
+
+    # -----------------------------
+    # Prepare board-hub directory
+    # -----------------------------
+    - name: Ensure board-hub directory exists
       file:
         path: "{{ board_hub_path }}"
         state: directory
         mode: '0755'
 
-    - name: Upload board-hub.zip
+    # -----------------------------
+    # Upload source code
+    # -----------------------------
+    - name: Upload backend source
       copy:
-        src: ./board-hub.zip
-        dest: "{{ board_hub_path }}/board-hub.zip"
-        mode: '0644'
-
-    - name: Extract board-hub.zip
-      unarchive:
-        src: "{{ board_hub_path }}/board-hub.zip"
-        dest: "{{ board_hub_path }}"
-        remote_src: yes
-        extra_opts: [--strip-components=1]
-
-    - name: Remove existing node_modules in frontend
-      file:
-        path: "{{ board_hub_path }}/frontend/node_modules"
-        state: absent
-
-    - name: Remove existing node_modules in backend
-      file:
-        path: "{{ board_hub_path }}/backend/node_modules"
-        state: absent
-
-    - name: Reinstall frontend dependencies
-      npm:
-        path: "{{ board_hub_path }}/frontend"
-        production: yes
-
-    - name: Reinstall backend dependencies
-      npm:
-        path: "{{ board_hub_path }}/backend"
-        production: yes
-
-    - name: Ensure run.sh is executable in frontend
-      file:
-        path: "{{ board_hub_path }}/frontend/run.sh"
+        src: ./backend
+        dest: "{{ board_hub_path }}/backend"
         mode: '0755'
 
-    - name: Ensure run.sh is executable in backend
-      file:
-        path: "{{ board_hub_path }}/backend/run.sh"
+    - name: Upload frontend source
+      copy:
+        src: ./frontend
+        dest: "{{ board_hub_path }}/frontend"
         mode: '0755'
 
-    - name: Run frontend run.sh
-      shell: bash run.sh
-      args:
-        chdir: "{{ board_hub_path }}/frontend"
+    # -----------------------------
+    # Generate Dockerfiles
+    # -----------------------------
+    - name: Create backend Dockerfile
+      copy:
+        dest: "{{ board_hub_path }}/backend/Dockerfile"
+        content: |
+          FROM python:3.11-slim
+          WORKDIR /app
+          COPY requirements.txt .
+          RUN python -m venv .venv \
+              && . .venv/bin/activate \
+              && pip install --no-cache-dir -r requirements.txt
+          COPY . .
+          EXPOSE 8000
+          CMD ["/bin/bash", "-c", "source .venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8000"]
 
-    - name: Run backend run.sh
-      shell: bash run.sh
-      args:
-        chdir: "{{ board_hub_path }}/backend"
+    - name: Create frontend Dockerfile
+      copy:
+        dest: "{{ board_hub_path }}/frontend/Dockerfile"
+        content: |
+          FROM node:20-slim
+          WORKDIR /app
+          COPY package.json yarn.lock ./
+          RUN yarn install --production
+          COPY . .
+          EXPOSE 3000
+          CMD ["yarn", "dev"]
+
+    # -----------------------------
+    # Generate Kubernetes manifests
+    # -----------------------------
+    - name: Create backend Deployment manifest
+      copy:
+        dest: "{{ board_hub_path }}/k8s/backend-deployment.yaml"
+        content: |
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: boardhub-backend
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: boardhub-backend
+            template:
+              metadata:
+                labels:
+                  app: boardhub-backend
+              spec:
+                containers:
+                  - name: backend
+                    image: {{ backend_image }}
+                    ports:
+                      - containerPort: 8000
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: boardhub-backend
+          spec:
+            type: ClusterIP
+            selector:
+              app: boardhub-backend
+            ports:
+              - port: 8000
+                targetPort: 8000
+
+    - name: Create frontend Deployment manifest
+      copy:
+        dest: "{{ board_hub_path }}/k8s/frontend-deployment.yaml"
+        content: |
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: boardhub-frontend
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: boardhub-frontend
+            template:
+              metadata:
+                labels:
+                  app: boardhub-frontend
+              spec:
+                containers:
+                  - name: frontend
+                    image: {{ frontend_image }}
+                    ports:
+                      - containerPort: 3000
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: boardhub-frontend
+          spec:
+            type: ClusterIP
+            selector:
+              app: boardhub-frontend
+            ports:
+              - port: 3000
+                targetPort: 3000
+
+    # -----------------------------
+    # Build and push Docker images
+    # -----------------------------
+    - name: Build backend Docker image
+      community.docker.docker_image:
+        name: "{{ backend_image }}"
+        build:
+          path: "{{ board_hub_path }}/backend"
+        push: yes
+
+    - name: Build frontend Docker image
+      community.docker.docker_image:
+        name: "{{ frontend_image }}"
+        build:
+          path: "{{ board_hub_path }}/frontend"
+        push: yes
+
+    # -----------------------------
+    # Deploy into k3s
+    # -----------------------------
+    - name: Deploy BoardHub via kubectl
+      shell: kubectl apply -f {{ board_hub_path }}/k8s/
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
