@@ -33,23 +33,23 @@ resource "hcloud_ssh_key" "default" {
 # -------------------------
 # Master node
 # -------------------------
-resource "hcloud_server" "k8s_master" {
+resource "hcloud_server" "k3s_master" {
   name        = "${var.cluster_name}-master"
   image       = data.hcloud_image.ubuntu.id
   server_type = "cpx11"
-  location    = "nbg1"
+  location    = "fsn"
   ssh_keys    = [hcloud_ssh_key.default.id]
 }
 
 # -------------------------
 # Worker nodes
 # -------------------------
-resource "hcloud_server" "k8s_worker" {
+resource "hcloud_server" "k3s_worker" {
   count       = var.worker_count # Add count for multiple workers
   name        = "${var.cluster_name}-worker-${count.index + 1}"
   image       = data.hcloud_image.ubuntu.id
   server_type = "cpx11"
-  location    = "nbg1"
+  location    = "fsn"
   ssh_keys    = [hcloud_ssh_key.default.id]
 }
 
@@ -71,10 +71,10 @@ resource "local_file" "ansible_inventory" {
 
   content = <<-EOF
 [managers]
-manager1 ansible_host=${hcloud_server.k8s_master.ipv4_address} ansible_user=root ansible_ssh_private_key_file=./private_key.pem
+manager1 ansible_host=${hcloud_server.k3s_master.ipv4_address} ansible_user=root ansible_ssh_private_key_file=./private_key.pem
 
 [workers]
-%{~ for i, worker in hcloud_server.k8s_worker ~}
+%{~ for i, worker in hcloud_server.k3s_worker ~}
 worker${i + 1} ansible_host=${worker.ipv4_address} ansible_user=root ansible_ssh_private_key_file=./private_key.pem
 %{~ endfor ~}
 
@@ -89,8 +89,8 @@ EOF
 # -------------------------
 resource "null_resource" "run_ansible" {
   depends_on = [
-    hcloud_server.k8s_master,
-    hcloud_server.k8s_worker,
+    hcloud_server.k3s_master,
+    hcloud_server.k3s_worker,
     local_file.ansible_inventory,
     local_file.private_key_file
   ]
@@ -108,12 +108,12 @@ resource "null_resource" "run_ansible" {
 # -------------------------
 output "master_ip" {
   description = "IP address of the master node"
-  value       = hcloud_server.k8s_master.ipv4_address
+  value       = hcloud_server.k3s_master.ipv4_address
 }
 
 output "worker_ips" {
   description = "IP addresses of worker nodes"
-  value       = hcloud_server.k8s_worker[*].ipv4_address
+  value       = hcloud_server.k3s_worker[*].ipv4_address
 }
 
 output "private_key_file" {
