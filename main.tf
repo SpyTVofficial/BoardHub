@@ -94,9 +94,13 @@
       local_file.ansible_inventory,
       local_file.private_key_file
     ]
-
     provisioner "local-exec" {
       command = <<EOT
+        echo "Waiting for SSH to become available..."
+        for i in {1..10}; do
+          nc -zv ${hcloud_server.k3s_master.ipv4_address} 22 && break
+          sleep 10
+        done
         ansible-playbook -i ${local_file.ansible_inventory.filename} playbooks/k3s.yml
         ansible-playbook -i ${local_file.ansible_inventory.filename} playbooks/deploy_board_hub.yml
       EOT
