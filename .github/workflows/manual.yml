@@ -12,10 +12,6 @@ jobs:
       HETZNER_TOKEN: ${{ secrets.HETZNER_TOKEN }}
 
     steps:
-
-      - name: Terraform Destroy on Start
-        run: terraform destroy -auto-approve -var="hcloud_token=${{ secrets.HETZNER_TOKEN }}"
-
       - name: Checkout code
         uses: actions/checkout@v3
 
@@ -23,6 +19,9 @@ jobs:
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: latest
+
+      - name: Terraform Destroy on Start
+        run: terraform destroy -auto-approve -var="hcloud_token=${{ secrets.HETZNER_TOKEN }}"
 
       - name: Terraform Init
         run: terraform init
