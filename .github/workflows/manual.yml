@@ -1,20 +1,28 @@
-env:
-  HETZNER_TOKEN: ${{ secrets.HETZNER_TOKEN }}
+name: Terraform CI/CD
 
-steps:
-  - name: Checkout code
-    uses: actions/checkout@v3
+on:
+  push:
+    branches:
+      - main  # run when pushing to main
 
-  - name: Setup Terraform
-    uses: hashicorp/setup-terraform@v2
-    with:
-      terraform_version: 1.7.7
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
 
-  - name: Terraform Init
-    run: terraform init
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-  - name: Terraform Plan
-    run: terraform plan -var="hcloud_token=${{ secrets.tcMnL5iLnqlDWjCWvAKc374zI60QpFCBS31FacM4XStw7HjFlcveikWrWUc6YUA2}}" -out=tfplan
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.7.7
 
-  - name: Terraform Apply
-    run: terraform apply -input=false -auto-approve tfplan
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan
+        run: terraform plan -var="hcloud_token=${{ secrets.tcMnL5iLnqlDWjCWvAKc374zI60QpFCBS31FacM4XStw7HjFlcveikWrWUc6YUA2 }}" -out=tfplan
+
+      - name: Terraform Apply
+        run: terraform apply -input=false -auto-approve tfplan
