@@ -36,7 +36,7 @@ resource "hcloud_server" "k8s_master" {
 # Worker nodes
 # -------------------------
 resource "hcloud_server" "k8s_worker" {
-  name        = "${var.cluster_name}-worker-${count.index + 1}"
+  name        = "${var.cluster_name}-worker"
   image       = "ubuntu-22.04"
   server_type = "cpx11"
   location    = "nbg1"
