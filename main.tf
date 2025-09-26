@@ -6,8 +6,12 @@ resource "tls_private_key" "default" {
 
 # Add SSH key to Hetzner
 resource "hcloud_ssh_key" "default" {
-  name       = "terraform-generated-key"
+  name       = "terraform-key-${random_id.suffix.hex}"
   public_key = tls_private_key.default.public_key_openssh
+}
+
+resource "random_id" "suffix" {
+  byte_length = 3
 }
 
 # Master node
