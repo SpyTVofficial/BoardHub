@@ -96,11 +96,11 @@ resource "null_resource" "run_ansible" {
 # Outputs
 # -------------------------
 output "master_ip" {
-  value = hcloud_server.k8s_master.ipv4_address
+  value = hcloud_server.manager1.network.ip
 }
 
 output "worker_ips" {
-  value = [for w in hcloud_server.k8s_worker : w.ipv4_address]
+  value = [for w in hcloud_server.k8s_worker : w.network.ip]
 }
 
 output "private_key_file" {
