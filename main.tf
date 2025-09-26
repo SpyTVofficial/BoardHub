@@ -18,6 +18,7 @@ resource "random_id" "suffix" {
 resource "hcloud_server" "k8s_master" {
   name        = "${var.cluster_name}-master"
   image       = "ubuntu-22.04"
+  image_type  = "system"      # <- ensures official OS image
   server_type = "cpx11"
   location    = "nbg1"
   ssh_keys    = [hcloud_ssh_key.default.id]
@@ -28,6 +29,7 @@ resource "hcloud_server" "k8s_worker" {
   count       = 2
   name        = "${var.cluster_name}-worker-${count.index}"
   image       = "ubuntu-22.04"
+  image_type  = "system"      # <- ensures official OS image
   server_type = "cpx11"
   location    = "nbg1"
   ssh_keys    = [hcloud_ssh_key.default.id]
