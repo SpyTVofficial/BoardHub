@@ -52,26 +52,6 @@ resource "local_file" "private_key_file" {
   file_permission = "0600"
 }
 
-# -------------------------
-# Generate Ansible inventory
-# -------------------------
-resource "local_file" "ansible_inventory" {
-  filename = "${path.module}/inventory.ini"
-  content  = <<EOT
-[managers]
-manager1 ansible_host=${hcloud_server.k8s_master.ipv4_address} ansible_user=root ansible_ssh_private_key_file=./private_key.pem
-
-[workers]
-${join("\n", [
-  for i, w in hcloud_server.k8s_worker :
-  "worker${i+1} ansible_host=${w.ipv4_address} ansible_user=root ansible_ssh_private_key_file=./private_key.pem"
-])}
-
-[all:vars]
-ansible_python_interpreter=/usr/bin/python3
-ansible_ssh_common_args='-o StrictHostKeyChecking=no'
-EOT
-}
 
 # -------------------------
 # Run Ansible playbooks automatically
@@ -96,13 +76,25 @@ resource "null_resource" "run_ansible" {
 # Outputs
 # -------------------------
 
-output "master_ip" {
-  value = hcloud_server.k8s_master.network[0].ip
+resource "local_file" "ansible_inventory" {
+  filename        = "${path.module}/ansible/inventories/inventory.ini"
+  file_permission = "0640"
+
+  content = <<-EOF
+[managers]
+manager1 ansible_host=${try(element([for n in hcloud_server.k8s_master.network : n.ip], 0), "")} ansible_user=root ansible_ssh_private_key_file=./private_key.pem
+
+[workers]
+%{ for i, w in hcloud_server.k8s_worker }
+worker${i+1} ansible_host=${try(element([for n in w.network : n.ip], 0), "")} ansible_user=root ansible_ssh_private_key_file=./private_key.pem
+%{ endfor }
+
+[all:vars]
+ansible_python_interpreter=/usr/bin/python3
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+EOF
 }
 
-output "worker_ips" {
-  value = [for w in hcloud_server.k8s_worker : w.network[0].ip]
-}
 
 output "private_key_file" {
   value = local_file.private_key_file.filename
