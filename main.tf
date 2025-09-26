@@ -85,7 +85,7 @@ manager1 ansible_host=${try(element([for n in hcloud_server.k8s_master.network :
 
 [workers]
 %{ for i, w in hcloud_server.k8s_worker }
-${format("worker%s ansible_host=%s ansible_user=root ansible_ssh_private_key_file=./private_key.pem", i + 1, try(element([for n in w.network : n.ip], 0), ""))}
+worker${i + 1} ansible_host=${try(element([for n in w.network : n.ip], 0), "")} ansible_user=root ansible_ssh_private_key_file=./private_key.pem
 %{ endfor }
 
 [all:vars]
