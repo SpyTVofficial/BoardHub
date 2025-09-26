@@ -1,36 +1,3 @@
-terraform {
-  required_providers {
-    hcloud = {
-      source  = "hetznercloud/hcloud"
-      version = "~> 1.37.0"
-    }
-    tls = {
-      source  = "hashicorp/tls"
-      version = "~> 4.0"
-    }
-    local = {
-      source  = "hashicorp/local"
-      version = "~> 2.3"
-    }
-  }
-}
-
-provider "hcloud" {
-  token = var.hcloud_token
-}
-
-variable "hcloud_token" {
-  type        = string
-  description = "Hetzner Cloud API token"
-  sensitive   = true
-}
-
-variable "cluster_name" {
-  type        = string
-  default     = "k3s-cluster"
-  description = "Name prefix for the servers"
-}
-
 # Generate SSH key
 resource "tls_private_key" "default" {
   algorithm = "RSA"
