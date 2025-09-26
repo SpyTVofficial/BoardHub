@@ -1,10 +1,10 @@
-# Generate an SSH key using Terraform
+# Generate an SSH key with Terraform
 resource "tls_private_key" "default" {
   algorithm = "RSA"
   rsa_bits  = 4096
 }
 
-# Use the generated public key in Hetzner
+# Create the SSH key in Hetzner
 resource "hcloud_ssh_key" "default" {
   name       = "terraform-generated-key"
   public_key = tls_private_key.default.public_key_openssh
@@ -29,12 +29,11 @@ resource "hcloud_server" "k8s_worker" {
   ssh_keys    = [hcloud_ssh_key.default.id]
 }
 
-# Output master IP
+# Outputs
 output "master_ip" {
   value = hcloud_server.k8s_master.ipv4_address
 }
 
-# Optional: Output private key to save/use later
 output "private_key_pem" {
   value     = tls_private_key.default.private_key_pem
   sensitive = true

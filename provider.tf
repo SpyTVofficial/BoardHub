@@ -4,9 +4,9 @@ terraform {
       source  = "hetznercloud/hcloud"
       version = "~> 1.38"
     }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.21"
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
     }
   }
 }
