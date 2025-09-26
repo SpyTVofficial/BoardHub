@@ -4,8 +4,14 @@ variable "hcloud_token" {
   sensitive   = true
 }
 
-
 variable "cluster_name" {
-  type    = string
-  default = "my-k8s-cluster"
+  description = "Name of the Kubernetes cluster"
+  type        = string
+  default     = "k8s-cluster"
+}
+
+variable "worker_count" {
+  description = "Number of worker nodes to create"
+  type        = number
+  default     = 2
 }

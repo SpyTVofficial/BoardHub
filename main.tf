@@ -36,7 +36,8 @@ resource "hcloud_server" "k8s_master" {
 # Worker nodes
 # -------------------------
 resource "hcloud_server" "k8s_worker" {
-  name        = "${var.cluster_name}-worker"
+  count       = var.worker_count # Add count for multiple workers
+  name        = "${var.cluster_name}-worker-${count.index + 1}"
   image       = "ubuntu-22.04"
   server_type = "cpx11"
   location    = "nbg1"
@@ -52,6 +53,27 @@ resource "local_file" "private_key_file" {
   file_permission = "0600"
 }
 
+# -------------------------
+# Generate Ansible inventory
+# -------------------------
+resource "local_file" "ansible_inventory" {
+  filename        = "${path.module}/ansible/inventories/inventory.ini"
+  file_permission = "0640"
+
+  content = <<-EOF
+[managers]
+manager1 ansible_host=${hcloud_server.k8s_master.ipv4_address} ansible_user=root ansible_ssh_private_key_file=./private_key.pem
+
+[workers]
+%{~ for i, worker in hcloud_server.k8s_worker ~}
+worker${i + 1} ansible_host=${worker.ipv4_address} ansible_user=root ansible_ssh_private_key_file=./private_key.pem
+%{~ endfor ~}
+
+[all:vars]
+ansible_python_interpreter=/usr/bin/python3
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+EOF
+}
 
 # -------------------------
 # Run Ansible playbooks automatically
@@ -75,33 +97,28 @@ resource "null_resource" "run_ansible" {
 # -------------------------
 # Outputs
 # -------------------------
-# Precompute worker lines so we don't do arithmetic inside the heredoc
-locals {
-  worker_lines = [
-    for idx, w in hcloud_server.k8s_worker :
-    "worker${idx + 1} ansible_host=${try(element([for n in w.network : n.ip], 0), \"\")} ansible_user=root ansible_ssh_private_key_file=./private_key.pem"
-  ]
+output "master_ip" {
+  description = "IP address of the master node"
+  value       = hcloud_server.k8s_master.ipv4_address
 }
 
-resource "local_file" "ansible_inventory" {
-  filename        = "${path.module}/ansible/inventories/inventory.ini"
-  file_permission = "0640"
-
-  content = <<-EOF
-[managers]
-manager1 ansible_host=${try(element([for n in hcloud_server.k8s_master.network : n.ip], 0), "")} ansible_user=root ansible_ssh_private_key_file=./private_key.pem
-
-[workers]
-${join("\n", local.worker_lines)}
-
-[all:vars]
-ansible_python_interpreter=/usr/bin/python3
-ansible_ssh_common_args='-o StrictHostKeyChecking=no'
-EOF
+output "worker_ips" {
+  description = "IP addresses of worker nodes"
+  value       = hcloud_server.k8s_worker[*].ipv4_address
 }
-
 
 output "private_key_file" {
-  value = local_file.private_key_file.filename
+  description = "Path to the generated private key file"
+  value       = local_file.private_key_file.filename
+  sensitive   = true
 }
 
+output "ssh_key_name" {
+  description = "Name of the SSH key in Hetzner Cloud"
+  value       = hcloud_ssh_key.default.name
+}
+
+output "ansible_inventory_file" {
+  description = "Path to the generated Ansible inventory file"
+  value       = local_file.ansible_inventory.filename
+}
