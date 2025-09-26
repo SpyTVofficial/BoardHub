@@ -17,8 +17,8 @@
 - hosts: k3s_workers
   become: yes
   vars:
-    master_ip: "{{ hostvars['k3s_master']['ansible_host'] }}"
-    token: "{{ hostvars['k3s_master']['master_token'] }}"
+    master_ip: "{{ hostvars[groups['k3s_master'][0]]['ansible_host'] }}"
+    token: "{{ hostvars[groups['k3s_master'][0]]['master_token'] }}"
   tasks:
     - name: Join worker to k3s cluster
       shell: |
