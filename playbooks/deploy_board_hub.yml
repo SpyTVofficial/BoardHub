@@ -77,15 +77,16 @@
     # -----------------------------
     - name: Upload backend source
       copy:
-        src: ./backend
+        src: ../backend
         dest: "{{ board_hub_path }}/backend"
         mode: '0755'
 
     - name: Upload frontend source
       copy:
-        src: ./frontend
+        src: ../frontend
         dest: "{{ board_hub_path }}/frontend"
         mode: '0755'
+
 
     # -----------------------------
     # Generate Dockerfiles
