@@ -1,10 +1,4 @@
-- name: Add current user to docker group
-      user:
-        name: "{{ ansible_user }}"
-        groups: docker
-        append: yes
-
-    # Wait a moment for- hosts: k3s_master
+- hosts: k3s_master
   become: yes
   vars:
     board_hub_path: /opt/board-hub
@@ -133,20 +127,10 @@
         groups: docker
         append: yes
 
-    - name: Install pip
-      apt:
-        name: python3-pip
-        state: present
+    # Wait a moment for group changes to take effect
+    - name: Reset SSH connection to allow user group changes to take effect
+      meta: reset_connection
 
-    - name: Install Python Docker SDK
-      pip:
-        name: docker
-        state: present
-        executable: pip3
-
-    # -----------------------------
-    # Docker Registry Login
-    # -----------------------------
     # -----------------------------
     # Docker Registry Login (Alternative Method)
     # -----------------------------
