@@ -81,36 +81,90 @@
           CMD ["yarn","dev"]
 
     # -----------------------------
+    # Install Docker and Dependencies
+    # -----------------------------
+    - name: Install required packages for Docker
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+        update_cache: yes
+
+    - name: Add Docker's official GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+
+    - name: Install Docker CE
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Start and enable Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add current user to docker group
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+
+    - name: Install Python Docker SDK
+      pip:
+        name: docker
+        state: present
+
+    # -----------------------------
     # Docker Registry Login
     # -----------------------------
-    - name: Log into Docker registry
-      docker_login:
-        username: "{{ registry_user }}"
-        password: "{{ registry_password }}"
+    # -----------------------------
+    # Docker Registry Login (Alternative Method)
+    # -----------------------------
+    - name: Log into Docker registry using shell
+      shell: echo "{{ registry_password }}" | docker login --username "{{ registry_user }}" --password-stdin
       when: registry_user is defined and registry_password is defined
+      no_log: true
 
     # -----------------------------
     # Build and Push Docker Images
     # -----------------------------
-    - name: Build backend Docker image
-      docker_image:
-        name: "{{ backend_image }}"
-        build:
-          path: "{{ board_hub_path }}/backend"
-          dockerfile: Dockerfile
-        source: build
-        push: yes
-        force_source: yes
+    - name: Build and push backend Docker image
+      shell: |
+        cd "{{ board_hub_path }}/backend"
+        docker build -t "{{ backend_image }}" .
+        docker push "{{ backend_image }}"
+      register: backend_build_result
 
-    - name: Build frontend Docker image
-      docker_image:
-        name: "{{ frontend_image }}"
-        build:
-          path: "{{ board_hub_path }}/frontend"
-          dockerfile: Dockerfile
-        source: build
-        push: yes
-        force_source: yes
+    - name: Build and push frontend Docker image
+      shell: |
+        cd "{{ board_hub_path }}/frontend"
+        docker build -t "{{ frontend_image }}" .
+        docker push "{{ frontend_image }}"
+      register: frontend_build_result
+
+    - name: Display build results
+      debug:
+        msg: |
+          Backend build: {{ 'SUCCESS' if backend_build_result.rc == 0 else 'FAILED' }}
+          Frontend build: {{ 'SUCCESS' if frontend_build_result.rc == 0 else 'FAILED' }}
 
     # -----------------------------
     # Create Kubernetes Namespace
