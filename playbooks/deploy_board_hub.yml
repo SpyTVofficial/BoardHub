@@ -54,6 +54,33 @@
         state: absent
 
     # -----------------------------
+    # Debug: Check extracted contents
+    # -----------------------------
+    - name: List contents of board-hub directory
+      shell: find "{{ board_hub_path }}" -type f -name "*.py" -o -name "*.js" -o -name "*.json" -o -name "requirements.txt" -o -name "package.json" | head -20
+      register: extracted_contents
+
+    - name: Display extracted contents
+      debug:
+        var: extracted_contents.stdout_lines
+
+    - name: Check if backend directory exists
+      stat:
+        path: "{{ board_hub_path }}/backend"
+      register: backend_dir
+
+    - name: Check if frontend directory exists
+      stat:
+        path: "{{ board_hub_path }}/frontend"
+      register: frontend_dir
+
+    - name: Display directory status
+      debug:
+        msg: |
+          Backend directory exists: {{ backend_dir.stat.exists }}
+          Frontend directory exists: {{ frontend_dir.stat.exists }}
+
+    # -----------------------------
     # Now Dockerfiles and builds will work from unzipped folders
     # -----------------------------
     - name: Create backend Dockerfile
@@ -62,11 +89,28 @@
         content: |
           FROM python:3.11-slim
           WORKDIR /app
+          
+          # Install uv
+          RUN pip install uv
+          
+          # Copy requirements first for better caching
           COPY requirements.txt .
-          RUN python -m venv .venv && . .venv/bin/activate && pip install --no-cache-dir -r requirements.txt
+          
+          # Create virtual environment and install dependencies using uv
+          RUN uv venv .venv && \
+              . .venv/bin/activate && \
+              uv pip install -r requirements.txt
+          
+          # Copy the rest of the application
           COPY . .
+          
+          # Make run script executable
+          RUN chmod +x run.sh
+          
           EXPOSE 8000
-          CMD ["/bin/bash","-c","source .venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8000"]
+          
+          # Use the run script but modify for production
+          CMD ["/bin/bash", "-c", "source .venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8000"]
 
     - name: Create frontend Dockerfile
       copy:
@@ -145,16 +189,34 @@
     - name: Build and push backend Docker image
       shell: |
         cd "{{ board_hub_path }}/backend"
-        docker build -t "{{ backend_image }}" .
-        docker push "{{ backend_image }}"
+        echo "Building backend image..."
+        docker build -t "{{ backend_image }}" . || exit 1
+        echo "Pushing backend image..."
+        docker push "{{ backend_image }}" || exit 1
+        echo "Backend build and push completed successfully"
       register: backend_build_result
+      failed_when: backend_build_result.rc != 0
+
+    - name: Display backend build output on failure
+      debug:
+        var: backend_build_result
+      when: backend_build_result.rc != 0
 
     - name: Build and push frontend Docker image
       shell: |
         cd "{{ board_hub_path }}/frontend"
-        docker build -t "{{ frontend_image }}" .
-        docker push "{{ frontend_image }}"
+        echo "Building frontend image..."
+        docker build -t "{{ frontend_image }}" . || exit 1
+        echo "Pushing frontend image..."
+        docker push "{{ frontend_image }}" || exit 1
+        echo "Frontend build and push completed successfully"
       register: frontend_build_result
+      failed_when: frontend_build_result.rc != 0
+
+    - name: Display frontend build output on failure
+      debug:
+        var: frontend_build_result
+      when: frontend_build_result.rc != 0
 
     - name: Display build results
       debug:
