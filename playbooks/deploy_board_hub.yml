@@ -1,4 +1,10 @@
-- hosts: k3s_master
+- name: Add current user to docker group
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+
+    # Wait a moment for- hosts: k3s_master
   become: yes
   vars:
     board_hub_path: /opt/board-hub
@@ -127,10 +133,16 @@
         groups: docker
         append: yes
 
+    - name: Install pip
+      apt:
+        name: python3-pip
+        state: present
+
     - name: Install Python Docker SDK
       pip:
         name: docker
         state: present
+        executable: pip3
 
     # -----------------------------
     # Docker Registry Login
