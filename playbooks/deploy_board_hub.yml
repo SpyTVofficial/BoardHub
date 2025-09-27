@@ -19,6 +19,15 @@
         mode: '0755'
 
     # -----------------------------
+    # Install unzip
+    # -----------------------------
+    - name: Ensure unzip is installed
+      apt:
+        name: unzip
+        state: present
+        update_cache: yes
+        
+    # -----------------------------
     # Upload board-hub.zip
     # -----------------------------
     - name: Upload board-hub.zip
