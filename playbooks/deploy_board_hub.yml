@@ -2,94 +2,51 @@
   become: yes
   vars:
     board_hub_path: /opt/board-hub
-    registry: imoresdev
-    backend_image: "{{ registry }}/board-hub:backend"
-    frontend_image: "{{ registry }}/board-hub:frontend"
-    registry_user: "{{ lookup('env', 'DOCKER_USER') }}"
-    registry_password: "{{ lookup('env', 'DOCKER_PASS') }}"
-
+    backend_image: "imoresdev/board-hub:backend"
+    frontend_image: "imoresdev/board-hub:frontend"
+    registry_user: "{{ lookup('env','DOCKER_USER') }}"
+    registry_password: "{{ lookup('env','DOCKER_PASS') }}"
 
   tasks:
 
     # -----------------------------
-    # Install Docker
+    # Ensure board-hub directory exists
     # -----------------------------
-    - name: Update apt cache
-      apt:
-        update_cache: yes
-
-    - name: Install dependencies
-      apt:
-        name: 
-          - apt-transport-https
-          - ca-certificates
-          - curl
-          - software-properties-common
-          - gnupg
-        state: present
-
-    - name: Add Docker GPG key
-      shell: curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-      args:
-        creates: /usr/share/keyrings/docker-archive-keyring.gpg
-
-
-    - name: Add Docker repository
-      apt_repository:
-        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu {{ ansible_lsb.codename }} stable"
-        state: present
-
-
-    - name: Install Docker
-      apt:
-        name:
-          - docker-ce
-          - docker-ce-cli
-          - containerd.io
-        state: present
-        update_cache: yes
-
-    - name: Ensure Docker service is started
-      service:
-        name: docker
-        state: started
-        enabled: yes
-
-    # -----------------------------
-    # Docker login
-    # -----------------------------
-    - name: Log in to Docker registry
-      community.docker.docker_login:
-        username: "{{ registry_user }}"
-        password: "{{ registry_password }}"
-
-    # -----------------------------
-    # Prepare board-hub directory
-    # -----------------------------
-    - name: Ensure board-hub directory exists
+    - name: Create board-hub directory
       file:
         path: "{{ board_hub_path }}"
         state: directory
         mode: '0755'
 
     # -----------------------------
-    # Upload source code
+    # Upload board-hub.zip
     # -----------------------------
-    - name: Upload backend source
+    - name: Upload board-hub.zip
       copy:
-        src: ../backend
-        dest: "{{ board_hub_path }}/backend"
-        mode: '0755'
-
-    - name: Upload frontend source
-      copy:
-        src: ../frontend
-        dest: "{{ board_hub_path }}/frontend"
-        mode: '0755'
-
+        src: ./board-hub.zip
+        dest: "{{ board_hub_path }}/board-hub.zip"
+        mode: '0644'
 
     # -----------------------------
-    # Generate Dockerfiles
+    # Unzip board-hub.zip
+    # -----------------------------
+    - name: Extract board-hub.zip
+      unarchive:
+        src: "{{ board_hub_path }}/board-hub.zip"
+        dest: "{{ board_hub_path }}"
+        remote_src: yes
+        extra_opts: [--strip-components=1]
+
+    # -----------------------------
+    # Remove the zip file (optional)
+    # -----------------------------
+    - name: Remove board-hub.zip
+      file:
+        path: "{{ board_hub_path }}/board-hub.zip"
+        state: absent
+
+    # -----------------------------
+    # Now Dockerfiles and builds will work from unzipped folders
     # -----------------------------
     - name: Create backend Dockerfile
       copy:
@@ -98,12 +55,10 @@
           FROM python:3.11-slim
           WORKDIR /app
           COPY requirements.txt .
-          RUN python -m venv .venv \
-              && . .venv/bin/activate \
-              && pip install --no-cache-dir -r requirements.txt
+          RUN python -m venv .venv && . .venv/bin/activate && pip install --no-cache-dir -r requirements.txt
           COPY . .
           EXPOSE 8000
-          CMD ["/bin/bash", "-c", "source .venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8000"]
+          CMD ["/bin/bash","-c","source .venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8000"]
 
     - name: Create frontend Dockerfile
       copy:
@@ -115,104 +70,4 @@
           RUN yarn install --production
           COPY . .
           EXPOSE 3000
-          CMD ["yarn", "dev"]
-
-    # -----------------------------
-    # Generate Kubernetes manifests
-    # -----------------------------
-    - name: Create backend Deployment manifest
-      copy:
-        dest: "{{ board_hub_path }}/k8s/backend-deployment.yaml"
-        content: |
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: boardhub-backend
-          spec:
-            replicas: 1
-            selector:
-              matchLabels:
-                app: boardhub-backend
-            template:
-              metadata:
-                labels:
-                  app: boardhub-backend
-              spec:
-                containers:
-                  - name: backend
-                    image: {{ backend_image }}
-                    ports:
-                      - containerPort: 8000
-          ---
-          apiVersion: v1
-          kind: Service
-          metadata:
-            name: boardhub-backend
-          spec:
-            type: ClusterIP
-            selector:
-              app: boardhub-backend
-            ports:
-              - port: 8000
-                targetPort: 8000
-
-    - name: Create frontend Deployment manifest
-      copy:
-        dest: "{{ board_hub_path }}/k8s/frontend-deployment.yaml"
-        content: |
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: boardhub-frontend
-          spec:
-            replicas: 1
-            selector:
-              matchLabels:
-                app: boardhub-frontend
-            template:
-              metadata:
-                labels:
-                  app: boardhub-frontend
-              spec:
-                containers:
-                  - name: frontend
-                    image: {{ frontend_image }}
-                    ports:
-                      - containerPort: 3000
-          ---
-          apiVersion: v1
-          kind: Service
-          metadata:
-            name: boardhub-frontend
-          spec:
-            type: ClusterIP
-            selector:
-              app: boardhub-frontend
-            ports:
-              - port: 3000
-                targetPort: 3000
-
-    # -----------------------------
-    # Build and push Docker images
-    # -----------------------------
-    - name: Build backend Docker image
-      community.docker.docker_image:
-        name: "{{ backend_image }}"
-        build:
-          path: "{{ board_hub_path }}/backend"
-        push: yes
-
-    - name: Build frontend Docker image
-      community.docker.docker_image:
-        name: "{{ frontend_image }}"
-        build:
-          path: "{{ board_hub_path }}/frontend"
-        push: yes
-
-    # -----------------------------
-    # Deploy into k3s
-    # -----------------------------
-    - name: Deploy BoardHub via kubectl
-      shell: kubectl apply -f {{ board_hub_path }}/k8s/
-      environment:
-        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+          CMD ["yarn","dev"]
