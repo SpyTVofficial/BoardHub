@@ -23,7 +23,7 @@
     # -----------------------------
     - name: Upload board-hub.zip
       copy:
-        src: ./board-hub.zip
+        src: ../board-hub.zip
         dest: "{{ board_hub_path }}/board-hub.zip"
         mode: '0644'
 
