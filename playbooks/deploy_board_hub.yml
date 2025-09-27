@@ -118,11 +118,27 @@
         content: |
           FROM node:20-slim
           WORKDIR /app
-          COPY package.json yarn.lock ./
-          RUN yarn install --production
+          
+          # Enable corepack and set yarn version
+          RUN corepack enable
+          
+          # Copy package.json and yarn.lock first for better caching
+          COPY package.json yarn.lock* ./
+          
+          # Set yarn to stable version and install dependencies
+          RUN yarn set version stable && \
+              yarn install --immutable --immutable-cache
+          
+          # Copy the rest of the application
           COPY . .
+          
+          # Make run script executable
+          RUN chmod +x run.sh || true
+          
           EXPOSE 3000
-          CMD ["yarn","dev"]
+          
+          # Use yarn dev for development
+          CMD ["yarn", "dev"]
 
     # -----------------------------
     # Install Docker and Dependencies
