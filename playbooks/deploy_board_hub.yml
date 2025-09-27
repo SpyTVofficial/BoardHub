@@ -26,7 +26,7 @@
         name: unzip
         state: present
         update_cache: yes
-        
+
     # -----------------------------
     # Upload board-hub.zip
     # -----------------------------
@@ -44,7 +44,6 @@
         src: "{{ board_hub_path }}/board-hub.zip"
         dest: "{{ board_hub_path }}"
         remote_src: yes
-        extra_opts: [--strip-components=1]
 
     # -----------------------------
     # Remove the zip file (optional)
