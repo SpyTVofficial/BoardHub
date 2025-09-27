@@ -2,11 +2,12 @@
   become: yes
   vars:
     board_hub_path: /opt/board-hub
-    registry: your-dockerhub-username
-    registry_user: your-dockerhub-username
-    registry_password: your-dockerhub-password
-    backend_image: "{{ registry }}/boardhub-backend:latest"
-    frontend_image: "{{ registry }}/boardhub-frontend:latest"
+    registry: imoresdev
+    backend_image: "{{ registry }}/board-hub:backend"
+    frontend_image: "{{ registry }}/board-hub:frontend"
+    registry_user: "{{ lookup('env', 'DOCKER_USER') }}"
+    registry_password: "{{ lookup('env', 'DOCKER_PASS') }}"
+
 
   tasks:
 
