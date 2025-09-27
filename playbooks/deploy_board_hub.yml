@@ -79,3 +79,282 @@
           COPY . .
           EXPOSE 3000
           CMD ["yarn","dev"]
+
+    # -----------------------------
+    # Docker Registry Login
+    # -----------------------------
+    - name: Log into Docker registry
+      docker_login:
+        username: "{{ registry_user }}"
+        password: "{{ registry_password }}"
+      when: registry_user is defined and registry_password is defined
+
+    # -----------------------------
+    # Build and Push Docker Images
+    # -----------------------------
+    - name: Build backend Docker image
+      docker_image:
+        name: "{{ backend_image }}"
+        build:
+          path: "{{ board_hub_path }}/backend"
+          dockerfile: Dockerfile
+        source: build
+        push: yes
+        force_source: yes
+
+    - name: Build frontend Docker image
+      docker_image:
+        name: "{{ frontend_image }}"
+        build:
+          path: "{{ board_hub_path }}/frontend"
+          dockerfile: Dockerfile
+        source: build
+        push: yes
+        force_source: yes
+
+    # -----------------------------
+    # Create Kubernetes Namespace
+    # -----------------------------
+    - name: Create board-hub namespace
+      kubernetes.core.k8s:
+        name: board-hub
+        api_version: v1
+        kind: Namespace
+        state: present
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+    # -----------------------------
+    # Deploy Backend Application
+    # -----------------------------
+    - name: Deploy backend deployment
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: board-hub-backend
+            namespace: board-hub
+          spec:
+            replicas: 2
+            selector:
+              matchLabels:
+                app: board-hub-backend
+            template:
+              metadata:
+                labels:
+                  app: board-hub-backend
+              spec:
+                containers:
+                - name: backend
+                  image: "{{ backend_image }}"
+                  ports:
+                  - containerPort: 8000
+                  env:
+                  - name: PORT
+                    value: "8000"
+                  resources:
+                    requests:
+                      memory: "256Mi"
+                      cpu: "250m"
+                    limits:
+                      memory: "512Mi"
+                      cpu: "500m"
+                  readinessProbe:
+                    httpGet:
+                      path: /health
+                      port: 8000
+                    initialDelaySeconds: 10
+                    periodSeconds: 5
+                  livenessProbe:
+                    httpGet:
+                      path: /health
+                      port: 8000
+                    initialDelaySeconds: 30
+                    periodSeconds: 10
+
+    - name: Deploy backend service
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: board-hub-backend-service
+            namespace: board-hub
+          spec:
+            selector:
+              app: board-hub-backend
+            ports:
+            - protocol: TCP
+              port: 8000
+              targetPort: 8000
+            type: ClusterIP
+
+    # -----------------------------
+    # Deploy Frontend Application
+    # -----------------------------
+    - name: Deploy frontend deployment
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: board-hub-frontend
+            namespace: board-hub
+          spec:
+            replicas: 2
+            selector:
+              matchLabels:
+                app: board-hub-frontend
+            template:
+              metadata:
+                labels:
+                  app: board-hub-frontend
+              spec:
+                containers:
+                - name: frontend
+                  image: "{{ frontend_image }}"
+                  ports:
+                  - containerPort: 3000
+                  env:
+                  - name: NEXT_PUBLIC_API_URL
+                    value: "http://board-hub-backend-service:8000"
+                  resources:
+                    requests:
+                      memory: "256Mi"
+                      cpu: "250m"
+                    limits:
+                      memory: "512Mi"
+                      cpu: "500m"
+                  readinessProbe:
+                    httpGet:
+                      path: /
+                      port: 3000
+                    initialDelaySeconds: 15
+                    periodSeconds: 5
+                  livenessProbe:
+                    httpGet:
+                      path: /
+                      port: 3000
+                    initialDelaySeconds: 45
+                    periodSeconds: 10
+
+    - name: Deploy frontend service
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: board-hub-frontend-service
+            namespace: board-hub
+          spec:
+            selector:
+              app: board-hub-frontend
+            ports:
+            - protocol: TCP
+              port: 3000
+              targetPort: 3000
+            type: ClusterIP
+
+    # -----------------------------
+    # Create Ingress for External Access
+    # -----------------------------
+    - name: Deploy ingress
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: board-hub-ingress
+            namespace: board-hub
+            annotations:
+              nginx.ingress.kubernetes.io/rewrite-target: /
+              nginx.ingress.kubernetes.io/ssl-redirect: "false"
+          spec:
+            ingressClassName: nginx
+            rules:
+            - host: board-hub.local  # Change this to your domain
+              http:
+                paths:
+                - path: /api
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: board-hub-backend-service
+                      port:
+                        number: 8000
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: board-hub-frontend-service
+                      port:
+                        number: 3000
+
+    # -----------------------------
+    # Wait for deployments to be ready
+    # -----------------------------
+    - name: Wait for backend deployment to be ready
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        name: board-hub-backend
+        namespace: board-hub
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        wait: true
+        wait_condition:
+          type: Progressing
+          status: "True"
+          reason: NewReplicaSetAvailable
+        wait_timeout: 300
+
+    - name: Wait for frontend deployment to be ready
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        name: board-hub-frontend
+        namespace: board-hub
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        wait: true
+        wait_condition:
+          type: Progressing
+          status: "True"
+          reason: NewReplicaSetAvailable
+        wait_timeout: 300
+
+    # -----------------------------
+    # Display deployment information
+    # -----------------------------
+    - name: Get ingress information
+      kubernetes.core.k8s_info:
+        api_version: networking.k8s.io/v1
+        kind: Ingress
+        name: board-hub-ingress
+        namespace: board-hub
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+      register: ingress_info
+
+    - name: Display deployment status
+      debug:
+        msg: |
+          Board-Hub deployment completed successfully!
+          
+          Frontend URL: http://board-hub.local (add this to your hosts file)
+          Backend API: http://board-hub.local/api
+          
+          To access locally, add this line to your /etc/hosts file:
+          {{ ansible_default_ipv4.address }} board-hub.local
+          
+          Kubectl commands to check status:
+          kubectl get pods -n board-hub
+          kubectl get services -n board-hub
+          kubectl get ingress -n board-hub
